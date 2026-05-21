@@ -32,12 +32,10 @@ type relayCacheEntry struct {
 }
 
 type relayInfoRequest struct {
-	Command          string `json:"command"`
-	ResourceGroup    string `json:"resource_group"`
-	VMName           string `json:"vm_name"`
-	ResourceType     string `json:"resource_type,omitempty"`
-	Port             int    `json:"port,omitempty"`
-	YesWithoutPrompt *bool  `json:"yes_without_prompt,omitempty"`
+	Command      string `json:"command"`
+	VMID         string `json:"vm_id"`
+	ResourceType string `json:"resource_type,omitempty"`
+	Port         int    `json:"port,omitempty"`
 }
 
 func newRelayManager(cfg *Config) *relayManager {
@@ -47,11 +45,15 @@ func newRelayManager(cfg *Config) *relayManager {
 	}
 }
 
-func (m *relayManager) getRelayInfo(ctx context.Context, req relayInfoRequest) (map[string]any, bool, error) {
-	resourceGroup := strings.TrimSpace(req.ResourceGroup)
-	vmName := strings.TrimSpace(req.VMName)
-	if resourceGroup == "" || vmName == "" {
-		return nil, false, fmt.Errorf("missing required fields: resource_group, vm_name")
+func (m *relayManager) getRelayInfo(ctx context.Context, req relayInfoRequest) (map[string]any, error) {
+	vmID := strings.TrimSpace(req.VMID)
+	if vmID == "" {
+		return nil, fmt.Errorf("missing required field: vm_id")
+	}
+
+	subscriptionID, resourceGroup, vmName, err := parseVMID(vmID, m.cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	resourceType := strings.TrimSpace(req.ResourceType)
@@ -66,81 +68,52 @@ func (m *relayManager) getRelayInfo(ctx context.Context, req relayInfoRequest) (
 
 	cacheKey := strings.ToLower(resourceGroup + "|" + vmName + "|" + resourceType + "|" + fmt.Sprint(port))
 	if cred, ok := m.getCached(cacheKey); ok {
-		return cred, false, nil
+		return cred, nil
 	}
 
 	authMode := strings.ToLower(strings.TrimSpace(m.cfg.AuthMode))
 	armToken, err := getARMAccessTokenByAuthMode(ctx, authMode, m.cfg)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
-	subscriptionID, err := getSubscriptionIDByAuthMode(ctx, authMode, m.cfg, armToken)
-	if err != nil {
-		return nil, false, err
+	if subscriptionID == "" {
+		subscriptionID, err = getSubscriptionIDByAuthMode(ctx, authMode, m.cfg, armToken)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	resourceURI, err := buildResourceURI(subscriptionID, resourceGroup, vmName, resourceType)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
-	cred, newServiceConfig, err := m.getRelayInfoFromARM(ctx, armToken, resourceURI, port)
+	cred, err := m.getRelayInfoFromARM(ctx, armToken, resourceURI, port)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	m.storeCached(cacheKey, cred)
-	return cred, newServiceConfig, nil
+	return cred, nil
 }
 
-func (m *relayManager) getRelayInfoFromARM(ctx context.Context, armToken, resourceURI string, port int) (map[string]any, bool, error) {
+func (m *relayManager) getRelayInfoFromARM(ctx context.Context, armToken, resourceURI string, port int) (map[string]any, error) {
 	cred, statusCode, err := listRelayCredentials(ctx, armToken, resourceURI, relayMaxValiditySeconds)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
-			if err := createDefaultEndpoint(ctx, armToken, resourceURI); err != nil {
-				return nil, false, err
-			}
-			cred = nil
+			return nil, fmt.Errorf("no relay credentials found; service configuration may need to be created manually")
 		} else if statusCode == http.StatusPreconditionFailed {
-			cred = nil
-		} else {
-			return nil, false, fmt.Errorf("unable to retrieve relay information: %w", err)
+			return nil, fmt.Errorf("relay service configuration not ready")
 		}
+		return nil, fmt.Errorf("unable to retrieve relay information: %w", err)
 	}
 
-	newServiceConfig := false
 	if cred == nil {
-		if err := createServiceConfiguration(ctx, armToken, resourceURI, port); err != nil {
-			return nil, false, err
-		}
-		newServiceConfig = true
-		waitRelayConnectionDelay(ctx)
-		var refreshErr error
-		cred, _, refreshErr = listRelayCredentials(ctx, armToken, resourceURI, relayMaxValiditySeconds)
-		if refreshErr != nil {
-			return nil, false, fmt.Errorf("unable to get relay information after setup: %w", refreshErr)
-		}
-	} else {
-		ok, err := checkServiceConfiguration(ctx, armToken, resourceURI, port)
-		if err != nil {
-			return nil, false, err
-		}
-		if !ok {
-			if err := createServiceConfiguration(ctx, armToken, resourceURI, port); err != nil {
-				return nil, false, err
-			}
-			newServiceConfig = true
-			waitRelayConnectionDelay(ctx)
-			var refreshErr error
-			cred, _, refreshErr = listRelayCredentials(ctx, armToken, resourceURI, relayMaxValiditySeconds)
-			if refreshErr != nil {
-				return nil, false, fmt.Errorf("unable to get relay information after service configuration update: %w", refreshErr)
-			}
-		}
+		return nil, fmt.Errorf("no relay credentials available")
 	}
 
-	return cred, newServiceConfig, nil
+	return cred, nil
 }
 
 func (m *relayManager) getCached(key string) (map[string]any, bool) {
@@ -201,6 +174,29 @@ func parseRelayExpiresOn(credential map[string]any) time.Time {
 	default:
 		return time.Time{}
 	}
+}
+
+func parseVMID(vmID string, cfg *Config) (subscriptionID, resourceGroup, vmName string, err error) {
+	parts := strings.Split(strings.TrimSpace(vmID), ".")
+	if len(parts) < 2 || len(parts) > 3 {
+		return "", "", "", fmt.Errorf("invalid vm_id format: expected [subscription-id.]resource-group.vm-name")
+	}
+
+	if len(parts) == 3 {
+		subscriptionID = strings.TrimSpace(parts[0])
+		resourceGroup = strings.TrimSpace(parts[1])
+		vmName = strings.TrimSpace(parts[2])
+	} else {
+		resourceGroup = strings.TrimSpace(parts[0])
+		vmName = strings.TrimSpace(parts[1])
+		// subscriptionID will be empty and will be resolved later
+	}
+
+	if resourceGroup == "" || vmName == "" {
+		return "", "", "", fmt.Errorf("invalid vm_id: resource-group and vm-name cannot be empty")
+	}
+
+	return subscriptionID, resourceGroup, vmName, nil
 }
 
 func buildResourceURI(subscriptionID, resourceGroup, vmName, resourceType string) (string, error) {

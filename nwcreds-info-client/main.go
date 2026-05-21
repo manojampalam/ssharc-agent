@@ -18,24 +18,20 @@ import (
 const maxRelayMessageSize = 64 * 1024
 
 type relayRequest struct {
-	Command          string `json:"command"`
-	ResourceGroup    string `json:"resource_group"`
-	VMName           string `json:"vm_name"`
-	ResourceType     string `json:"resource_type,omitempty"`
-	Port             int    `json:"port,omitempty"`
-	YesWithoutPrompt bool   `json:"yes_without_prompt"`
+	Command      string `json:"command"`
+	VMID         string `json:"vm_id"`
+	ResourceType string `json:"resource_type,omitempty"`
+	Port         int    `json:"port,omitempty"`
 }
 
 type relayResponse struct {
-	Type             string         `json:"type"`
-	Error            string         `json:"error,omitempty"`
-	Cred             map[string]any `json:"cred,omitempty"`
-	NewServiceConfig bool           `json:"new_service_config,omitempty"`
+	Type  string         `json:"type"`
+	Error string         `json:"error,omitempty"`
+	Cred  map[string]any `json:"cred,omitempty"`
 }
 
 func main() {
-	resourceGroup := flag.String("resource-group", "", "Azure resource group name")
-	vmName := flag.String("vm-name", "", "Azure Arc machine name")
+	vmID := flag.String("vm-id", "", "VM ID in format [subscription-id.]resource-group.vm-name")
 	resourceType := flag.String("resource-type", "Microsoft.HybridCompute/machines", "ARM resource type")
 	port := flag.Int("port", 22, "SSH port to request")
 	socketPath := flag.String("socket-path", "", "Relay socket path or named pipe")
@@ -43,8 +39,8 @@ func main() {
 	pretty := flag.Bool("pretty", true, "Pretty-print JSON output")
 	flag.Parse()
 
-	if strings.TrimSpace(*resourceGroup) == "" || strings.TrimSpace(*vmName) == "" {
-		die("both --resource-group and --vm-name are required")
+	if strings.TrimSpace(*vmID) == "" {
+		die("--vm-id is required (format: [subscription-id.]resource-group.vm-name)")
 	}
 
 	path := strings.TrimSpace(*socketPath)
@@ -59,12 +55,10 @@ func main() {
 	defer cancel()
 
 	resp, err := getRelayInfo(ctx, path, relayRequest{
-		Command:          "get_relay_info",
-		ResourceGroup:    strings.TrimSpace(*resourceGroup),
-		VMName:           strings.TrimSpace(*vmName),
-		ResourceType:     strings.TrimSpace(*resourceType),
-		Port:             *port,
-		YesWithoutPrompt: true,
+		Command:      "get_nw_creds",
+		VMID:         strings.TrimSpace(*vmID),
+		ResourceType: strings.TrimSpace(*resourceType),
+		Port:         *port,
 	})
 	if err != nil {
 		die("relay request failed: %v", err)

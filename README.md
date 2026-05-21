@@ -2,7 +2,7 @@
 
 Run an in-memory SSH agent that serves an AAD/Entra SSH certificate for a generated RSA keypair.
 
-The process also hosts a relay information IPC interface that queries ARM HybridConnectivity relay credentials using the same identity mode used for SSH cert acquisition.
+The process also hosts a network credentials (NW) IPC interface that queries ARM HybridConnectivity relay credentials using the same identity mode used for SSH cert acquisition.
 
 The auth provider is selected via a JSON config file:
 - `az_cli`
@@ -12,7 +12,7 @@ SSH socket endpoint is configured in the same config file:
 - Windows: named pipe path, for example `\\\\.\\pipe\\ssharc-agent-auth`
 - Unix: domain socket path, for example `/tmp/ssharc-agent-auth.sock`
 
-Relay socket endpoint is configured separately:
+Network credentials socket endpoint is configured separately:
 - Windows: named pipe path, for example `\\\\.\\pipe\\ssharc-agent-nw`
 - Unix: domain socket path, for example `/tmp/ssharc-agent-nw.sock`
 
@@ -140,27 +140,29 @@ export SSH_AUTH_SOCK=/tmp/ssharc-agent-auth.sock
 ssh user@host
 ```
 
-## Relay Info Interface
+## Network Credentials Interface
 
-The relay IPC server starts with the same process and uses the same auth mode configured in `auth_mode` to call ARM:
+The network credentials (NW) IPC server starts with the same process and uses the same auth mode configured in `auth_mode` to call ARM:
 - `az_cli`: uses current Azure CLI identity.
 - `service_principal`: uses the configured service principal credential.
 
 Environment variable set by the process:
-- `RELAY_INFO_SOCK` -> relay socket/pipe path.
+- `RELAY_INFO_SOCK` -> nw socket/pipe path.
 
 Request format (4-byte big-endian length + JSON body):
 
 ```json
 {
-  "command": "get_relay_info",
-  "resource_group": "my-rg",
-  "vm_name": "my-arc-machine",
+  "command": "get_nw_creds",
+  "vm_id": "<subscription-id>.my-rg.my-arc-machine",
   "resource_type": "Microsoft.HybridCompute/machines",
-  "port": 22,
-  "yes_without_prompt": true
+  "port": 22
 }
 ```
+
+The `vm_id` format is `[subscription-id.]resource-group.vm-name`:
+- If `subscription-id` is omitted, it will be resolved from config or current Azure CLI context.
+- `resource-group` and `vm-name` are required.
 
 Response format:
 
@@ -174,8 +176,7 @@ Response format:
     "accessKey": "...",
     "expiresOn": 0,
     "serviceConfigurationToken": "..."
-  },
-  "new_service_config": false
+  }
 }
 ```
 
@@ -190,17 +191,23 @@ Error format:
 
 ### Local Test Client (Go)
 
-A small Go client is included at `nwcreds-info-client` to query relay info from the running agent.
+A small Go client is included at `nwcreds-info-client` to query nw credentials from the running agent.
 
 Example:
 
 ```powershell
-go run ./nwcreds-info-client --resource-group my-rg --vm-name my-arc-machine
+go run ./nwcreds-info-client --vm-id "<subscription-id>.my-rg.my-arc-machine"
+```
+
+Or omit subscription-id to use config/environment:
+
+```powershell
+go run ./nwcreds-info-client --vm-id "my-rg.my-arc-machine"
 ```
 
 Optional flags:
-- `--socket-path` to override relay socket/pipe path (otherwise uses `RELAY_INFO_SOCK` or default path).
+- `--socket-path` to override nw socket/pipe path (otherwise uses `RELAY_INFO_SOCK` or default path).
 - `--resource-type` to override `Microsoft.HybridCompute/machines`.
-- `--port` to request relay info for a different SSH port.
+- `--port` to request nw credentials for a different SSH port.
 - `--timeout` to control request timeout (default `30s`).
 - `--pretty=false` for compact JSON output.

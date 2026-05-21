@@ -86,21 +86,20 @@ func handleRelayClient(ctx context.Context, conn net.Conn, manager *relayManager
 		return
 	}
 
-	if !strings.EqualFold(strings.TrimSpace(req.Command), "get_relay_info") {
+	if !strings.EqualFold(strings.TrimSpace(req.Command), "get_nw_creds") {
 		sendRelayError(conn, fmt.Sprintf("unknown command: %s", strings.TrimSpace(req.Command)))
 		return
 	}
 
-	cred, newServiceConfig, err := manager.getRelayInfo(ctx, req)
+	cred, err := manager.getRelayInfo(ctx, req)
 	if err != nil {
 		sendRelayError(conn, err.Error())
 		return
 	}
 
 	response := map[string]any{
-		"type":               relayMsgTypeResponse,
-		"cred":               cred,
-		"new_service_config": newServiceConfig,
+		"type": relayMsgTypeResponse,
+		"cred": cred,
 	}
 	if err := writeFramedRelayJSON(conn, response); err != nil {
 		log.Printf("relay response write failed: %v", err)
