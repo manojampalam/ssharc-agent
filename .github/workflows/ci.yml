@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        go: ['1.25.x']
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Verify formatting
+        shell: pwsh
+        run: |
+          $unformatted = gofmt -l .
+          if ($LASTEXITCODE -ne 0) {
+            throw "gofmt failed"
+          }
+          if ($unformatted) {
+            Write-Host "Files need gofmt:"
+            $unformatted
+            exit 1
+          }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build main tool
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $ext = ""
+          if ($env:RUNNER_OS -eq "Windows") { $ext = ".exe" }
+          go build -v -ldflags "-X main.version=$env:GITHUB_SHA" -o ("dist/ssharc-agent" + $ext) .
+
+      - name: Build nwcreds client
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $ext = ""
+          if ($env:RUNNER_OS -eq "Windows") { $ext = ".exe" }
+          go build -v -o ("dist/nwcreds-info-client" + $ext) ./nwcreds-info-client
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}
+          path: dist/*
