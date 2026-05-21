@@ -143,9 +143,9 @@ func writeAll(conn net.Conn, data []byte) error {
 
 func defaultRelaySocketPath() string {
 	if runtime.GOOS == "windows" {
-		return `\\.\pipe\entra-cert-relay`
+		return `\\.\pipe\ssharc-agent-nw`
 	}
-	return filepath.Join(os.TempDir(), "entra-cert-relay.sock")
+	return filepath.Join(os.TempDir(), "ssharc-agent-nw.sock")
 }
 
 func die(format string, args ...any) {

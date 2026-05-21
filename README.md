@@ -1,4 +1,4 @@
-# entra-cert
+# ssharc-agent
 
 Run an in-memory SSH agent that serves an AAD/Entra SSH certificate for a generated RSA keypair.
 
@@ -9,24 +9,24 @@ The auth provider is selected via a JSON config file:
 - `service_principal`
 
 SSH socket endpoint is configured in the same config file:
-- Windows: named pipe path, for example `\\\\.\\pipe\\entra-cert-agent`
-- Unix: domain socket path, for example `/tmp/entra-cert-agent.sock`
+- Windows: named pipe path, for example `\\\\.\\pipe\\ssharc-agent-auth`
+- Unix: domain socket path, for example `/tmp/ssharc-agent-auth.sock`
 
 Relay socket endpoint is configured separately:
-- Windows: named pipe path, for example `\\\\.\\pipe\\entra-cert-relay`
-- Unix: domain socket path, for example `/tmp/entra-cert-relay.sock`
+- Windows: named pipe path, for example `\\\\.\\pipe\\ssharc-agent-nw`
+- Unix: domain socket path, for example `/tmp/ssharc-agent-nw.sock`
 
 ## Run
 
 ```powershell
-go run ./cmd/entra-cert --config ./cmd/entra-cert/config.json
+go run . --config ./config.json
 ```
 
 Or build and run:
 
 ```powershell
-go build -o ./cmd/entra-cert/entra-cert.exe ./cmd/entra-cert
-./cmd/entra-cert/entra-cert.exe --config ./cmd/entra-cert/config.json
+go build -o ./ssharc-agent.exe .
+./ssharc-agent.exe --config ./config.json
 ```
 
 Print version:
@@ -48,8 +48,8 @@ go build -ldflags "-X main.version=v1.2.3" -o ssharc-agent.exe .
 
 ```json
 {
-	"socket_path": "\\\\.\\pipe\\entra-cert-agent",
-  "relay_socket_path": "\\\\.\\pipe\\entra-cert-relay",
+  "socket_path": "\\\\.\\pipe\\ssharc-agent-auth",
+  "relay_socket_path": "\\\\.\\pipe\\ssharc-agent-nw",
   "auth_mode": "az_cli"
 }
 ```
@@ -60,8 +60,8 @@ This mode runs `az ssh cert` under the hood and uses the current Azure CLI login
 
 ```json
 {
-	"socket_path": "\\\\.\\pipe\\entra-cert-agent",
-  "relay_socket_path": "\\\\.\\pipe\\entra-cert-relay",
+  "socket_path": "\\\\.\\pipe\\ssharc-agent-auth",
+  "relay_socket_path": "\\\\.\\pipe\\ssharc-agent-nw",
   "subscription_id": "22222222-2222-2222-2222-222222222222",
   "auth_mode": "service_principal",
   "service_principal": {
@@ -78,8 +78,8 @@ This mode runs `az ssh cert` under the hood and uses the current Azure CLI login
 
 ```json
 {
-	"socket_path": "\\\\.\\pipe\\entra-cert-agent",
-  "relay_socket_path": "\\\\.\\pipe\\entra-cert-relay",
+  "socket_path": "\\\\.\\pipe\\ssharc-agent-auth",
+  "relay_socket_path": "\\\\.\\pipe\\ssharc-agent-nw",
   "subscription_id": "22222222-2222-2222-2222-222222222222",
   "auth_mode": "service_principal",
   "service_principal": {
@@ -101,11 +101,11 @@ This mode uses managed identity to access Key Vault, then:
 
 Notes:
 - `socket_path` is optional. Defaults:
-  - Windows: `\\\\.\\pipe\\entra-cert-agent`
-  - Unix: `${TMPDIR}/entra-cert-agent.sock` (typically `/tmp/entra-cert-agent.sock`)
+  - Windows: `\\\\.\\pipe\\ssharc-agent-auth`
+  - Unix: `${TMPDIR}/ssharc-agent-auth.sock` (typically `/tmp/ssharc-agent-auth.sock`)
 - `relay_socket_path` is optional. Defaults:
-  - Windows: `\\\\.\\pipe\\entra-cert-relay`
-  - Unix: `${TMPDIR}/entra-cert-relay.sock` (typically `/tmp/entra-cert-relay.sock`)
+  - Windows: `\\\\.\\pipe\\ssharc-agent-nw`
+  - Unix: `${TMPDIR}/ssharc-agent-nw.sock` (typically `/tmp/ssharc-agent-nw.sock`)
 - `subscription_id` is optional. If omitted:
   - `az_cli` mode uses `az account show` current subscription.
   - `service_principal` mode resolves from ARM `/subscriptions` (first enabled subscription).
@@ -121,7 +121,7 @@ Notes:
 Run the agent:
 
 ```powershell
-./cmd/entra-cert/entra-cert.exe --config ./cmd/entra-cert/config.json
+./ssharc-agent.exe --config ./config.json
 ```
 
 Then point SSH to the socket:
@@ -129,14 +129,14 @@ Then point SSH to the socket:
 Windows PowerShell:
 
 ```powershell
-$env:SSH_AUTH_SOCK="\\.\pipe\entra-cert-agent"
+$env:SSH_AUTH_SOCK="\\.\pipe\ssharc-agent-auth"
 ssh user@host
 ```
 
 Unix shell:
 
 ```bash
-export SSH_AUTH_SOCK=/tmp/entra-cert-agent.sock
+export SSH_AUTH_SOCK=/tmp/ssharc-agent-auth.sock
 ssh user@host
 ```
 
@@ -190,12 +190,12 @@ Error format:
 
 ### Local Test Client (Go)
 
-A small Go client is included at `cmd/relay-info-client` to query relay info from the running agent.
+A small Go client is included at `nwcreds-info-client` to query relay info from the running agent.
 
 Example:
 
 ```powershell
-go run ./cmd/relay-info-client --resource-group my-rg --vm-name my-arc-machine
+go run ./nwcreds-info-client --resource-group my-rg --vm-name my-arc-machine
 ```
 
 Optional flags:

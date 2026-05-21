@@ -16,7 +16,7 @@ func getSSHCertificateFromAzCLI(publicKey ssh.PublicKey) (*ssh.Certificate, erro
 		return nil, fmt.Errorf("az CLI not found in PATH: %w", err)
 	}
 
-	tempDir, err := os.MkdirTemp("", "entra-cert-*")
+	tempDir, err := os.MkdirTemp("", "ssharc-agent-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}

@@ -19,9 +19,9 @@ import (
 
 func defaultSocketPath() string {
 	if runtime.GOOS == "windows" {
-		return `\\.\pipe\entra-cert-agent`
+		return `\\.\pipe\ssharc-agent-auth`
 	}
-	return filepath.Join(os.TempDir(), "entra-cert-agent.sock")
+	return filepath.Join(os.TempDir(), "ssharc-agent-auth.sock")
 }
 
 func serveSSHAgent(
@@ -52,7 +52,7 @@ func serveSSHAgent(
 	if err := keyring.Add(agent.AddedKey{
 		PrivateKey:   privateKey,
 		Certificate:  cert,
-		Comment:      "entra-cert",
+		Comment:      "ssharc-agent",
 		LifetimeSecs: 0,
 	}); err != nil {
 		return fmt.Errorf("failed to add key identity to agent: %w", err)
@@ -87,7 +87,7 @@ func serveSSHAgent(
 					if err := keyring.Add(agent.AddedKey{
 						PrivateKey:   privateKey,
 						Certificate:  newCert,
-						Comment:      "entra-cert",
+						Comment:      "ssharc-agent",
 						LifetimeSecs: 0,
 					}); err != nil {
 						log.Printf("certificate refresh failed to add new identity: %v", err)
